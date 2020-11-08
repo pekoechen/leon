@@ -13,6 +13,7 @@ import io
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
+import shutil
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 import numpy as np
@@ -101,16 +102,17 @@ def read_uncertainty_plotl1l2(filePath, db):
             iLoss_list.append(float(row['Insertion Loss']))
     return freq_list, fitted_list, iLoss_list
 
-def genWorkBook():
+def genWorkBook(collectResFold):
     print("[INFO][SummaryReport] start ===> ")
-    workbook = xlsxwriter.Workbook('SummaryReport.xlsx')
+    collectResPath = os.path.join(collectResFold, 'SummaryReport.xlsx')
+    workbook = xlsxwriter.Workbook(collectResPath)
     return workbook
 
 def finishWorkBook(workbook):
     workbook.close()
     print("[INFO][SummaryReport] done <=== ")
 
-def readConfig(dataFold):
+def readConfig(dataFold, collectResFold):
     def csv_read(file):
         with open(file, newline='') as f:
             row_list = f.read().splitlines()
@@ -144,13 +146,13 @@ def readConfig(dataFold):
         for layer in g_layer_list:
             for length in g_length_list:
                 fileName = "{0}_{1}_{2}.s4p".format(dut,layer,length)
-                if not os.path.isfile(fileName):
-                    print("[ERROR] {0} doest not exist!!".format(fileName))
+                filePath = os.path.join(dataFold, 'input_s4p', fileName)
+                if not os.path.isfile(filePath):
+                    print("[ERROR] {0} doest not exist!!".format(filePath))
                     sys.exit(-1)
                 layerDict = s4pDict[dut].setdefault(layer,collections.OrderedDict())
-                layerDict.setdefault(length, fileName)
-                layerDict['outFold'] = os.path.join(dataFold, "output_{0}_{1}".format(dut,layer))
-                #print(fileName)
+                layerDict.setdefault(length, filePath)
+                layerDict['outFold'] = os.path.join(collectResFold, "output_{0}_{1}".format(dut,layer))
         pass
 
     # for aitt.exe parameter
@@ -160,7 +162,8 @@ def readConfig(dataFold):
         print("[ERROR] please check length.csv")
         sys.exit(-1)
 
-    aittFold = os.path.join("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
+    #aittFold = os.path.join("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
+    aittFold = g_configDict['aittFold']
     filePath_script = \
         os.path.join(aittFold, 'script_examples','deltal_{0}l_report.js'.format(numOfLength))
     filePath_script = "\"{0}\"".format(filePath_script)
@@ -296,24 +299,24 @@ def runFreqMagEach(filePath, length):
         #plt.savefig(outputFilePath, dpi=300, format="png")
     return
 
-def runFreqMag():
+def runFreqMag(s4pDict,dataFold):
     for dut in g_dut_list:
         for layer in g_layer_list:
-            outFilePath = "output_{dut}_{layer}/magnitude.png".format(dut=dut, layer=layer)
+            outFold = s4pDict[dut][layer]['outFold']
+            outFilePath = os.path.join(outFold, 'magnitude.png')
             #print(outFilePath)
 
             plt.cla()
             for leng in g_length_list:
-                filePath = \
-                    "{dut}_{layer}_{leng}.s4p".format(dut=dut, layer=layer, leng=leng)
-            #    print(filePath)
+                fileName = s4pDict[dut][layer][leng]
+                filePath = os.path.join(dataFold, fileName)
                 runFreqMagEach(filePath,leng)
 
             plt.savefig(outFilePath, dpi=300, format="png")
 
     print("[INFO][Magnitude] successfully generate")
     return
-def make_database(workbook,dataSheet,dut,dutDict,dataFold):
+def make_database(workbook,dataSheet,dut,dutDict):
     for layer, layerDict in dutDict.items():
         outFold = layerDict['outFold']
         #print(outFold)
@@ -497,7 +500,8 @@ def run_data_sheet(workbook, dataSheet, s4pDict):
     lengthStr = "-".join(g_length_list)
 
     # common part
-    font_calibri = workbook.add_format({'font':'calibri'})
+    font_calibri = workbook.add_format({'font':'calibri',
+                                        'border': 1})
     bold = workbook.add_format({'bold': True,
                                 'font':'calibri'})
     format_freq = workbook.add_format({
@@ -594,13 +598,13 @@ def run_data_sheet(workbook, dataSheet, s4pDict):
 
     return
 
-def runPictureSheet():
+def runPictureSheet(workbook, picSheet, s4pDict):
     row_jump = 18
     col_jump = 7
     idx = 0
     for dut in g_dut_list:
         for layer in g_layer_list:
-            outFold = 'output_{dut}_{layer}'.format(dut=dut, layer=layer)
+            outFold = s4pDict[dut][layer]['outFold']
             filePath_magnitude = os.path.join(outFold, 'magnitude.png')
             offset_row = 1 + (row_jump * idx)
             offset_col = 1
@@ -617,7 +621,7 @@ def runPictureSheet():
     print("[INFO][SummaryReport] running PictureSheet")
     return
 
-def runLayerSheet():
+def runLayerSheet(workbook,s4pDict):
     layer_list =['L01']
     for layer in g_layer_list:
         layerSheet = workbook.add_worksheet(layer)
@@ -692,7 +696,7 @@ def mergePdf(inputFold, pdfName):
     outputStream.close()
     return filePath
 
-def generatePdfReport(s4pDict):
+def generatePdfReport(s4pDict, collectResFold):
     print("[INFO][SummaryReportPdf] running...")
     mergedObject = PdfFileMerger()
 
@@ -706,7 +710,8 @@ def generatePdfReport(s4pDict):
             #print(newPdfPath)
             mergedObject.append(PdfFileReader(newPdfPath, 'rb'))
 
-    mergedObject.write("SummaryReportPdf.pdf")
+    outputFilePath = os.path.join(collectResFold, "SummaryReportPdf.pdf")
+    mergedObject.write(outputFilePath)
 
     return
 
@@ -716,17 +721,21 @@ if __name__ == '__main__':
     #[Step0] preprocess
     print("Current Working Directory:{0} ", os.getcwd())
     dataFold = os.getcwd()
-    s4pDict = readConfig(dataFold)
+    collectResFold = os.path.join(dataFold, 'output')
+    if os.path.exists(collectResFold):
+        shutil.rmtree(collectResFold)
+
+    s4pDict = readConfig(dataFold, collectResFold)
 
     #os.system("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)\aitt.exe")
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
-    os.chdir("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
+    os.chdir(g_configDict['aittFold'])
     for dut in g_dut_list:
         for layer in g_layer_list:
             #print(s4pDict[dut][layer]['aittCmd'])
             os.system(s4pDict[dut][layer]['aittCmd'])
     os.chdir(dataFold)
-
+    runFreqMag(s4pDict, dataFold)
     #aittCmd = s4pDict['AD001']['L01']['aittCmd']
     #print(aittCmd)
     #os.system('aitt.exe -h')
@@ -735,45 +744,29 @@ if __name__ == '__main__':
 
 
     #[Step1] Summary Report
-    workbook = genWorkBook()
+    workbook = genWorkBook(collectResFold)
     summarySheet = workbook.add_worksheet('Summary')
     dataSheet = workbook.add_worksheet('Data')
     picSheet = workbook.add_worksheet('Picture')
 
     for dut, dutDict in s4pDict.items():
         #print(dutDict)
-        make_database(workbook, dataSheet, dut, dutDict, dataFold)
+        make_database(workbook, dataSheet, dut, dutDict)
 
     run_data_sheet(workbook, dataSheet, s4pDict)
     run_summary_sheet(workbook, summarySheet, s4pDict)
-    runLayerSheet()
-    runPictureSheet()
+    runLayerSheet(workbook,s4pDict)
+    runPictureSheet(workbook, picSheet, s4pDict)
 
     finishWorkBook(workbook)
 
     #########################
     #[Step2] PDF report
-    runFreqMag()
-    generatePdfReport(s4pDict)
+    generatePdfReport(s4pDict, collectResFold)
 
     print("")
     print("[INFO] All process done !!!")
     print("[INFO] All process done !!!")
     print("[INFO] All process done !!!")
-
-    '''
-    s4pDict = readConfig()
-    print(s4pDict)
-    for dut, dutDict in s4pDict.items():
-        run_dut_layer(dutDict)
-    # runTransfer()
-    #print(fileList)
-    #os.system("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)\aitt.exe")
-    #path = os.path.join('C:', os.sep, 'meshes', 'as')
-    #print("Current Working Directory ", os.getcwd())
-    #os.chdir("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
-    #print("Current Working Directory ", os.getcwd())
-    #os.system('aitt.exe -h')
-    '''
 
     sys.exit(0)
