@@ -16,7 +16,7 @@ from reportlab.lib.pagesizes import letter
 import shutil
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
-import numpy as np
+
 
 #reload(sys)
 #sys.setdefaultencoding('utf-8')
@@ -103,14 +103,14 @@ def read_uncertainty_plotl1l2(filePath, db):
     return freq_list, fitted_list, iLoss_list
 
 def genWorkBook(collectResFold):
-    print("[INFO][SummaryReport] start ===> ")
+    print("[INFO][SummaryReport] start {0}> ".format('='*30))
     collectResPath = os.path.join(collectResFold, 'SummaryReport.xlsx')
     workbook = xlsxwriter.Workbook(collectResPath)
     return workbook
 
 def finishWorkBook(workbook):
     workbook.close()
-    print("[INFO][SummaryReport] done <=== ")
+    print("[INFO][SummaryReport] done <{0} ".format('='*30))
 
 def readConfig(dataFold, collectResFold):
     def csv_read(file):
@@ -302,6 +302,7 @@ def runFreqMagEach(filePath, length):
 def runFreqMag(s4pDict,dataFold):
     for dut in g_dut_list:
         for layer in g_layer_list:
+            print("[INFO] parsing {0}_{1}".format(dut, layer))
             outFold = s4pDict[dut][layer]['outFold']
             outFilePath = os.path.join(outFold, 'magnitude.png')
             #print(outFilePath)
@@ -733,6 +734,7 @@ if __name__ == '__main__':
     for dut in g_dut_list:
         for layer in g_layer_list:
             #print(s4pDict[dut][layer]['aittCmd'])
+            print("[INFO][aitt.exe]process done {dut}_{layer} !!".format(dut=dut, layer=layer))
             os.system(s4pDict[dut][layer]['aittCmd'])
     os.chdir(dataFold)
     runFreqMag(s4pDict, dataFold)
@@ -750,7 +752,6 @@ if __name__ == '__main__':
     picSheet = workbook.add_worksheet('Picture')
 
     for dut, dutDict in s4pDict.items():
-        #print(dutDict)
         make_database(workbook, dataSheet, dut, dutDict)
 
     run_data_sheet(workbook, dataSheet, s4pDict)
