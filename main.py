@@ -109,7 +109,7 @@ def finishWorkBook(workbook):
     workbook.close()
     print("[INFO][SummaryReport] done <=== ")
 
-def readConfig():
+def readConfig(dataFold):
     def csv_read(file):
         with open(file, newline='') as f:
             row_list = f.read().splitlines()
@@ -139,6 +139,31 @@ def readConfig():
                 layerDict.setdefault(length, fileName)
                 layerDict['outFold'] = "output_{0}_{1}".format(dut,layer)
                 #print(fileName)
+        pass
+
+    # for aitt.exe parameter
+    numOfLength = len(g_length_list)
+    if(numOfLength != 2) and (numOfLength != 3):
+        print("[ERROR] num of length is wrong: {0}".format(numOfLength))
+        print("[ERROR] please check length.csv")
+        sys.exit(-1)
+
+    aittFold = os.path.join("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
+    filePath_script = \
+        os.path.join(aittFold, 'script_examples','deltal_{0}l_report.js'.format(numOfLength))
+
+    for dut in g_dut_list:
+        for layer in g_layer_list:
+            aittCmd = 'aitt.exe -s {script}'.format(script=filePath_script)
+            layerDict = s4pDict[dut][layer]
+            for length in g_length_list:
+                fileName = layerDict[length]
+                filePath = os.path.join(dataFold,fileName)
+                opt = 'true'
+                length = int(length.split('IN')[0])
+                aittCmd += " {0} {1} {2}".format(filePath, opt, length)
+            #print (aittCmd)
+            layerDict['aittCmd'] = aittCmd
 
     return s4pDict
 
@@ -661,9 +686,10 @@ def generatePdfReport(s4pDict):
 # [Main]
 if __name__ == '__main__':
     #[Step0] preprocess
-    s4pDict = readConfig()
-    runFreqMag()
-    '''
+    print("Current Working Directory:{0} ", os.getcwd())
+    dataFold = os.getcwd()
+    s4pDict = readConfig(dataFold)
+
     #s4pDict = readConfig()
     print(s4pDict)
     #for dut, dutDict in s4pDict.items():
@@ -671,12 +697,24 @@ if __name__ == '__main__':
 
     #os.system("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)\aitt.exe")
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
-    print("Current Working Directory:{0} ", os.getcwd())
+    #print("Current Working Directory:{0} ", os.getcwd())
+    #dataFold = os.getcwd()
     os.chdir("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
     print("Current Working Directory:{0} ", os.getcwd())
     #os.system('aitt.exe -h')
-    sys.exit(0)
+
     '''
+    for dut in g_dut_list:
+        for layer in g_layer_list:
+            print(s4pDict[dut][layer]['aittCmd'])
+            os.system(s4pDict[dut][layer]['aittCmd'])
+    '''
+
+    aittCmd = s4pDict['AD001']['L01']['aittCmd']
+    print(aittCmd)
+    os.system(aittCmd)
+    sys.exit(0)
+
 
     #[Step1] Summary Report
     workbook = genWorkBook()
@@ -697,6 +735,7 @@ if __name__ == '__main__':
 
     #########################
     #[Step2] PDF report
+    runFreqMag()
     generatePdfReport(s4pDict)
 
     print("")
