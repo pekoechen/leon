@@ -23,7 +23,8 @@ import numpy as np
 g_cellFreqListStart = None
 g_cellFreqListEnd = None
 
-g_devName = 'Not assigned'
+g_configDict = {'deviceName':'Not assigned',
+                'aittFold':'C:\Program Files\Advanced Interconnect Test Tool (64-Bit)'}
 
 g_dut_list = []
 g_layer_list = []
@@ -121,9 +122,20 @@ def readConfig(dataFold):
     g_length_list = csv_read('length.csv')
     config_list = csv_read('config.csv')
 
-    global g_devName
-    g_devName = config_list[0].split(',')[1]
-    #print(g_devName)
+    global g_configDict
+    for parameter in config_list:
+        pair = parameter.split(',')
+        attr, configedVal = pair[0], pair[1]
+        if attr not in g_configDict.keys():
+            print("[ERROR] config fail, attr:{0}".format(attr))
+            print("[ERROR] config fail, keys:{0}".format(g_configDict.keys()))
+            sys.exit(-2)
+        g_configDict[attr] = configedVal
+        pass
+
+    for item in g_configDict.items():
+        print("[INFO][config] {0} ".format(item))
+
 
     s4pDict = {}
     for dut in g_dut_list:
@@ -137,7 +149,7 @@ def readConfig(dataFold):
                     sys.exit(-1)
                 layerDict = s4pDict[dut].setdefault(layer,collections.OrderedDict())
                 layerDict.setdefault(length, fileName)
-                layerDict['outFold'] = "output_{0}_{1}".format(dut,layer)
+                layerDict['outFold'] = os.path.join(dataFold, "output_{0}_{1}".format(dut,layer))
                 #print(fileName)
         pass
 
@@ -151,6 +163,7 @@ def readConfig(dataFold):
     aittFold = os.path.join("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
     filePath_script = \
         os.path.join(aittFold, 'script_examples','deltal_{0}l_report.js'.format(numOfLength))
+    filePath_script = "\"{0}\"".format(filePath_script)
 
     for dut in g_dut_list:
         for layer in g_layer_list:
@@ -163,6 +176,7 @@ def readConfig(dataFold):
                 length = int(length.split('IN')[0])
                 aittCmd += " {0} {1} {2}".format(filePath, opt, length)
             #print (aittCmd)
+            aittCmd = "{0} {1}".format(aittCmd, os.path.join(dataFold, layerDict['outFold']))
             layerDict['aittCmd'] = aittCmd
 
     return s4pDict
@@ -299,7 +313,7 @@ def runFreqMag():
 
     print("[INFO][Magnitude] successfully generate")
     return
-def make_database(workbook,dataSheet,dut,dutDict):
+def make_database(workbook,dataSheet,dut,dutDict,dataFold):
     for layer, layerDict in dutDict.items():
         outFold = layerDict['outFold']
         #print(outFold)
@@ -307,7 +321,9 @@ def make_database(workbook,dataSheet,dut,dutDict):
         csv1 = '{0}/freq_report_table.csv'.format(outFold)
         csv2 = '{0}/impedance_report_table.csv'.format(outFold)
         csv3 = '{0}/trace_report_table.csv'.format(outFold)
-        csv4 = '{0}/uncertainty_plot_l1l2.csv'.format(outFold)
+        #csv4 = '{0}/uncertainty_plot_l1l2.csv'.format(outFold)
+        csv4 = os.path.join(outFold,'uncertainty_plot_l1l2.csv')
+
 
         db_l1l2 = {}
         db_common = {}
@@ -373,12 +389,21 @@ def run_summary_sheet(workbook, summarySheet, s4pDict):
     offset_col_summary_sample = offset_col_summary + 2
     layerSize = len(g_layer_list)
     sampleIdx = 0
+
     for sampleFreq in g_sampleFreqList:
         sampleStr = "(dB/in,@{0}GHz)".format(sampleFreq)
+        lengOfSampleStr = len(sampleStr)
         offset_col = offset_col_summary_sample + (sampleIdx * layerSize)
-        summarySheet.merge_range(offset_row_summary_sample, offset_col,
-                                 offset_row_summary_sample, offset_col + (layerSize-1),
-                                 sampleStr, getDefaultFormat(workbook, '#c3e4bc'))
+        if layerSize > 1:
+            summarySheet.merge_range(offset_row_summary_sample, offset_col,
+                                     offset_row_summary_sample, offset_col + (layerSize-1),
+                                     sampleStr, getDefaultFormat(workbook, '#c3e4bc'))
+            summarySheet.set_column(offset_col,offset_col + (layerSize-1),lengOfSampleStr)
+        else:
+            summarySheet.write(offset_row_summary_sample, offset_col,
+                               sampleStr, getDefaultFormat(workbook, '#c3e4bc'))
+            summarySheet.set_column(offset_col,offset_col,lengOfSampleStr)
+
         for layerIdx in range(layerSize):
             offset_row = offset_row_summary_sample + 1
             offset_col = offset_col_summary_sample + (sampleIdx * layerSize)
@@ -505,10 +530,10 @@ def run_data_sheet(workbook, dataSheet, s4pDict):
     dataSheet.merge_range('A1:B1', 'Raw data', bold)
     dataSheet.write('C1', lengthStr, bold)
 
-    dataSheet.write('A2', g_devName,format_freqAttr)
+    dataSheet.write('A2', g_configDict['deviceName'],format_freqAttr)
     dataSheet.merge_range('B2:B3', 'Freq.(GHz)',format_freqAttr)
     dataSheet.write('A3', 'Freq.(MHz)',format_freqAttr)
-    dataSheet.set_column('A:B',len(g_devName))
+    dataSheet.set_column('A:B',len(g_configDict['deviceName']))
 
     # frequence
     offset_row_freqMhz = 3
@@ -521,7 +546,7 @@ def run_data_sheet(workbook, dataSheet, s4pDict):
     for freqIdx in range(numOfFreq):
         freq = freq_list[freqIdx]
         dataSheet.write(offset_row_freqMhz + freqIdx, offset_col_freqMhz, freq*1000, format_freq)
-        dataSheet.write(offset_row_freqGhz + freqIdx, offset_col_freqGhz, freq,format_freq)
+        dataSheet.write(offset_row_freqGhz + freqIdx, offset_col_freqGhz, freq, format_freq)
 
     global g_cellFreqListStart, g_cellFreqListEnd
     g_cellFreqListStart = xl_rowcol_to_cell(offset_row_freqGhz, offset_col_freqGhz)
@@ -537,8 +562,12 @@ def run_data_sheet(workbook, dataSheet, s4pDict):
 
     for dut, dutDict in s4pDict.items():
         offset_dut = layerSize * dutIdx
-        dataSheet.merge_range(offset_row_attr_dutName, offset_col_attr_dutName + offset_dut,
-                              offset_row_attr_dutName, offset_col_attr_dutName + offset_dut + layerSize-1,
+        if layerSize > 1:
+            dataSheet.merge_range(offset_row_attr_dutName, offset_col_attr_dutName + offset_dut,
+                                  offset_row_attr_dutName, offset_col_attr_dutName + offset_dut + layerSize-1,
+                                  dut, format_DutLayerAttr)
+        else:
+            dataSheet.write(offset_row_attr_dutName, offset_col_attr_dutName + offset_dut,
                               dut, format_DutLayerAttr)
 
         offset_row_freq = offset_row_attr_dutName + 2
@@ -572,14 +601,14 @@ def runPictureSheet():
     for dut in g_dut_list:
         for layer in g_layer_list:
             outFold = 'output_{dut}_{layer}'.format(dut=dut, layer=layer)
-            filePath_magnitude = '{outFold}/magnitude.png'.format(outFold=outFold)
+            filePath_magnitude = os.path.join(outFold, 'magnitude.png')
             offset_row = 1 + (row_jump * idx)
             offset_col = 1
             picSheet.insert_image(offset_row, offset_col, filePath_magnitude, {'x_scale': 0.65, 'y_scale': 0.65})
 
             offset_row = offset_row
             offset_col = offset_col + col_jump
-            filePath_uncertainty = '{outFold}/uncertainty_plot_l1l2.png'.format(outFold=outFold)
+            filePath_uncertainty = os.path.join(outFold,'uncertainty_plot_l1l2.png')
             picSheet.insert_image(offset_row, offset_col, filePath_uncertainty, {'x_scale': 0.5, 'y_scale': 0.5})
 
             idx += 1
@@ -611,7 +640,7 @@ def runLayerSheet():
             #print("g_cellFreqListEnd:{0}".format(g_cellFreqListEnd))
 
             chart1.add_series({
-                'name': "{0}_{1}".format(g_devName,dut),
+                'name': "{0}_{1}".format(g_configDict['deviceName'],dut),
                 'categories': '=Data!{cellStart}:{cellEnd}'.format(cellStart = g_cellFreqListStart,
                                                                    cellEnd = g_cellFreqListEnd),
                 'values': '=Data!{cellStart}:{cellEnd}'.format(cellStart = cellStart,
@@ -620,7 +649,7 @@ def runLayerSheet():
             })
 
         # Add a chart title and some axis labels.
-        chart1.set_title({'name': g_devName})
+        chart1.set_title({'name': g_configDict['deviceName']})
         chart1.set_x_axis({'name': 'Frequency (GHz)'})
         chart1.set_y_axis({'name': 'Insertion Loss (dB/in)'})
 
@@ -677,8 +706,7 @@ def generatePdfReport(s4pDict):
             #print(newPdfPath)
             mergedObject.append(PdfFileReader(newPdfPath, 'rb'))
 
-    mergedObject.write("SummaryReportPdf.pd"
-                       "f")
+    mergedObject.write("SummaryReportPdf.pdf")
 
     return
 
@@ -690,30 +718,20 @@ if __name__ == '__main__':
     dataFold = os.getcwd()
     s4pDict = readConfig(dataFold)
 
-    #s4pDict = readConfig()
-    print(s4pDict)
-    #for dut, dutDict in s4pDict.items():
-    #    run_dut_layer(dutDict)
-
     #os.system("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)\aitt.exe")
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
-    #print("Current Working Directory:{0} ", os.getcwd())
-    #dataFold = os.getcwd()
     os.chdir("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)")
-    print("Current Working Directory:{0} ", os.getcwd())
-    #os.system('aitt.exe -h')
-
-    '''
     for dut in g_dut_list:
         for layer in g_layer_list:
-            print(s4pDict[dut][layer]['aittCmd'])
+            #print(s4pDict[dut][layer]['aittCmd'])
             os.system(s4pDict[dut][layer]['aittCmd'])
-    '''
+    os.chdir(dataFold)
 
-    aittCmd = s4pDict['AD001']['L01']['aittCmd']
-    print(aittCmd)
-    os.system(aittCmd)
-    sys.exit(0)
+    #aittCmd = s4pDict['AD001']['L01']['aittCmd']
+    #print(aittCmd)
+    #os.system('aitt.exe -h')
+    #os.system(aittCmd)
+    #sys.exit(0)
 
 
     #[Step1] Summary Report
@@ -724,7 +742,7 @@ if __name__ == '__main__':
 
     for dut, dutDict in s4pDict.items():
         #print(dutDict)
-        make_database(workbook, dataSheet, dut, dutDict)
+        make_database(workbook, dataSheet, dut, dutDict, dataFold)
 
     run_data_sheet(workbook, dataSheet, s4pDict)
     run_summary_sheet(workbook, summarySheet, s4pDict)
