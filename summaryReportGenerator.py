@@ -1,10 +1,11 @@
-# -*- coding:utf-8 -*-
+#-*- coding: utf-8 -*-
 import sys
 import collections
 import os
 import csv
 import math
 import xlsxwriter
+import importlib
 from xlsxwriter.utility import xl_rowcol_to_cell
 from xlsxwriter.utility import xl_range
 
@@ -17,15 +18,14 @@ import shutil
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 
-
-#reload(sys)
-#sys.setdefaultencoding('utf-8')
+from uuid import getnode as get_mac
 
 g_cellFreqListStart = None
 g_cellFreqListEnd = None
 
 g_configDict = {'deviceName':'Not assigned',
-                'aittFold':'C:\Program Files\Advanced Interconnect Test Tool (64-Bit)'}
+                'aittFold':'C:\Program Files\Advanced Interconnect Test Tool (64-Bit)',
+                'fittedReverse': 'false'}
 
 g_dut_list = []
 g_layer_list = []
@@ -305,12 +305,13 @@ def runFreqMag(s4pDict,dataFold):
             print("[INFO] parsing {0}_{1}".format(dut, layer))
             outFold = s4pDict[dut][layer]['outFold']
             outFilePath = os.path.join(outFold, 'magnitude.png')
-            #print(outFilePath)
+            print(outFilePath)
 
             plt.cla()
             for leng in g_length_list:
                 fileName = s4pDict[dut][layer][leng]
                 filePath = os.path.join(dataFold, fileName)
+                print(f'leng:{leng}, fileName:{fileName}, filePath:{filePath}')
                 runFreqMagEach(filePath,leng)
 
             plt.savefig(outFilePath, dpi=300, format="png")
@@ -340,8 +341,9 @@ def make_database(workbook,dataSheet,dut,dutDict):
 
         #print(freq_list)
         #dutDict['name'] = dut
+        reverseFlag = -1 if g_configDict['fittedReverse'] else 1
         layerDict['freqList'] = freq_list
-        layerDict['fittedList'] = [float(i) for i in fitted_list]
+        layerDict['fittedList'] = [float(i)*reverseFlag for i in fitted_list]
         layerDict['iLossList'] = [float(i) for i in insertLoss_list]
     print("[INFO][make_database] done!!, {dut}".format(dut=dut))
     return
@@ -655,7 +657,8 @@ def runLayerSheet(workbook,s4pDict):
 
         # Add a chart title and some axis labels.
         chart1.set_title({'name': g_configDict['deviceName']})
-        chart1.set_x_axis({'name': 'Frequency (GHz)'})
+        chart1.set_x_axis({'name': 'Frequency (GHz)',
+                           'label_position': 'low'})
         chart1.set_y_axis({'name': 'Insertion Loss (dB/in)'})
 
         # Set an Excel chart style. Colors with white outline and shadow.
@@ -718,7 +721,19 @@ def generatePdfReport(s4pDict, collectResFold):
 
 ####################
 # [Main]
+def myGetMac():
+    mac = get_mac()
+    mac = ':'.join(("%012X" % mac)[i:i + 2] for i in range(0, 12, 2))
+    return mac
+
 if __name__ == '__main__':
+    #importlib.reload(sys)
+    #sys.setdefaultencoding('utf-8')
+    #result = os.system('aitt.exe -h')
+    #print(f'result:{result}')
+    #sys.exit(0)
+
+    #print(myGetMac())
     #[Step0] preprocess
     print("Current Working Directory:{0} ", os.getcwd())
     dataFold = os.getcwd()
@@ -726,23 +741,35 @@ if __name__ == '__main__':
     if os.path.exists(collectResFold):
         shutil.rmtree(collectResFold)
 
+    os.system(f'mkdir {collectResFold}')
     s4pDict = readConfig(dataFold, collectResFold)
+    print(s4pDict['AD001']['L01'])
+
+    for dev, layerDict in s4pDict.items():
+        for layer, db in layerDict.items():
+            output_fold_per_layer = db['outFold']
+            os.system(f'mkdir {output_fold_per_layer}')
 
     #os.system("C:\Program Files\Advanced Interconnect Test Tool (64-Bit)\aitt.exe")
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
+
+
     os.chdir(g_configDict['aittFold'])
     for dut in g_dut_list:
         for layer in g_layer_list:
             #print(s4pDict[dut][layer]['aittCmd'])
-            print("[INFO][aitt.exe]process done {dut}_{layer} !!".format(dut=dut, layer=layer))
             os.system(s4pDict[dut][layer]['aittCmd'])
+            print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
     os.chdir(dataFold)
+
+    #sys.exit(0)
+
     runFreqMag(s4pDict, dataFold)
+
     #aittCmd = s4pDict['AD001']['L01']['aittCmd']
     #print(aittCmd)
     #os.system('aitt.exe -h')
     #os.system(aittCmd)
-    #sys.exit(0)
 
 
     #[Step1] Summary Report
