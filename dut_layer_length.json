@@ -1,0 +1,21 @@
+{
+    "config": {
+        "deviceName": "Unimicron EM888",
+        "aittFold": "C:\\Program Files\\Advanced Interconnect Test Tool (64-Bit)"
+    },
+    "dut": [
+        "AD001",
+        "AD002"
+    ],
+    "layer": [
+        "L01",
+        "L3",
+        "L987",
+        "L3210",
+        "L654"
+    ],
+    "length": [
+        "05IN",
+        "10IN"
+    ]
+}
