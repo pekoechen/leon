@@ -3,13 +3,16 @@ import sys
 import collections
 import os
 import csv
+import json
 import math
 import xlsxwriter
 import importlib
 from xlsxwriter.utility import xl_rowcol_to_cell
 from xlsxwriter.utility import xl_range
 
-from PyPDF2 import PdfFileWriter, PdfFileReader, PdfFileMerger
+#from PyPDF2 import PdfFileWriter, PdfFileReader, PdfFileMerger
+from PyPDF2 import PdfWriter, PdfReader, PdfMerger
+
 import io
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
@@ -119,25 +122,34 @@ def readConfig(dataFold, collectResFold):
             return row_list
 
     global g_dut_list, g_layer_list, g_length_list
-    g_dut_list = csv_read('dut.csv')
-    g_layer_list = csv_read('layer.csv')
-    g_length_list = csv_read('length.csv')
-    config_list = csv_read('config.csv')
+    # g_dut_list = csv_read('dut.csv')
+    # g_layer_list = csv_read('layer.csv')
+    # g_length_list = csv_read('length.csv')
+    # config_list = csv_read('config.csv')
 
-    global g_configDict
-    for parameter in config_list:
-        pair = parameter.split(',')
-        attr, configedVal = pair[0], pair[1]
-        if attr not in g_configDict.keys():
-            print("[ERROR] config fail, attr:{0}".format(attr))
-            print("[ERROR] config fail, keys:{0}".format(g_configDict.keys()))
-            sys.exit(-2)
-        g_configDict[attr] = configedVal
-        pass
-
-    for item in g_configDict.items():
+    with open('dut_layer_length.json', 'r') as file:
+        jdb = json.load(file)
+    for item in jdb.items():
         print("[INFO][config] {0} ".format(item))
 
+    # global g_configDict
+    # for parameter in config_list:
+    #     pair = parameter.split(',')
+    #     attr, configedVal = pair[0], pair[1]
+    #     if attr not in g_configDict.keys():
+    #         print("[ERROR] config fail, attr:{0}".format(attr))
+    #         print("[ERROR] config fail, keys:{0}".format(g_configDict.keys()))
+    #         sys.exit(-2)
+    #     g_configDict[attr] = configedVal
+    #     pass
+
+    # for item in g_configDict.items():
+    #     print("[INFO][config] {0} ".format(item))
+
+    g_configDict  = jdb['config']
+    g_dut_list    = jdb['dut']
+    g_layer_list  = jdb['layer']
+    g_length_list = jdb['length']
 
     s4pDict = {}
     for dut in g_dut_list:
@@ -145,7 +157,7 @@ def readConfig(dataFold, collectResFold):
         #s4pDict[dut]['name'] = dut
         for layer in g_layer_list:
             for length in g_length_list:
-                fileName = "{0}_{1}_{2}.s4p".format(dut,layer,length)
+                fileName = "{0}-{1}-{2}.s4p".format(dut,layer,length)
                 filePath = os.path.join(dataFold, 'input_s4p', fileName)
                 if not os.path.isfile(filePath):
                     print("[ERROR] {0} doest not exist!!".format(filePath))
@@ -235,7 +247,7 @@ def runFreqMagEach(filePath, length):
         print("S42IM:{0}".format(attrDict['S42IM']))
 
     #filePath = 'AD001_L01_05IN.s4p'
-    with open(filePath, newline='') as f:
+    with open(filePath, newline='', encoding="utf-8") as f:
         row_list = f.read().splitlines()
 
         rowUnit = 4
@@ -248,6 +260,8 @@ def runFreqMagEach(filePath, length):
                 attrIdxMap[attrIdx] = attr
                 attrIdx += 1
 
+        #print(attrIdxMap)
+
         row_list = row_list[13:]
         if (len(row_list)%rowUnit)!=0:
             print("[ERROR] input wrong, len(row_list)={0}".format(len(row_list)))
@@ -259,7 +273,7 @@ def runFreqMagEach(filePath, length):
             rowIdxStart = groupIdx * rowUnit
             rowIdxEnd = rowIdxStart + rowUnit
             attrIdx = 0
-            attrDict = collections.OrderedDict()
+            attrDict = collections.OrderedDict() 
             #print("rowStart:{0}, rowEnd:{1}".format(rowIdxStart, rowIdxEnd))
             for rowIdx in range(rowIdxStart, rowIdxEnd):
                 for attr in row_list[rowIdx].split():
@@ -284,7 +298,7 @@ def runFreqMagEach(filePath, length):
         y = freqInfo[1]
         #plt.cla()
         #plt.grid(color='r', linestyle='--', linewidth=1, alpha=0.3)
-        plt.grid(b=True)
+        #plt.grid(b=True)
         plt.plot(x, y, label=length)
         plt.legend()
 
@@ -682,16 +696,16 @@ def mergePdf(inputFold, pdfName):
 
     # move to the beginning of the StringIO buffer
     packet.seek(0)
-    existing_pdf = PdfFileReader(packet)
+    existing_pdf = PdfReader(packet)
     # read your existing PDF
     filePath = os.path.join(os.getcwd(), inputFold, pdfName)
-    new_pdf = PdfFileReader(open(filePath, "rb"))
+    new_pdf = PdfReader(open(filePath, "rb"))
 
-    output = PdfFileWriter()
+    output = PdfWriter()
     # add the "watermark" (which is the new pdf) on the existing page
-    page = existing_pdf.getPage(0)
-    page.mergePage(new_pdf.getPage(0))
-    output.addPage(page)
+    page = existing_pdf.pages[0]
+    page.merge_page(new_pdf.pages[0])
+    output.add_page(page)
     # finally, write "output" to a real file
     newPdfName = "tmp_deltal_2l_report.pdf"
     filePath = os.path.join(os.getcwd(), inputFold, newPdfName)
@@ -702,7 +716,7 @@ def mergePdf(inputFold, pdfName):
 
 def generatePdfReport(s4pDict, collectResFold):
     print("[INFO][SummaryReportPdf] running...")
-    mergedObject = PdfFileMerger()
+    mergedObject = PdfMerger()
 
     for dut, dutDict in s4pDict.items():
         for layer, layerDict in dutDict.items():
@@ -712,7 +726,7 @@ def generatePdfReport(s4pDict, collectResFold):
             newPdfPath = mergePdf(inputFold, pdfName)
             #,layerDict['outFold'], os.sep, 'deltal_2l_report.pdf'
             #print(newPdfPath)
-            mergedObject.append(PdfFileReader(newPdfPath, 'rb'))
+            mergedObject.append(PdfReader(newPdfPath, 'rb'))
 
     outputFilePath = os.path.join(collectResFold, "SummaryReportPdf.pdf")
     mergedObject.write(outputFilePath)
@@ -743,7 +757,7 @@ if __name__ == '__main__':
 
     os.system(f'mkdir {collectResFold}')
     s4pDict = readConfig(dataFold, collectResFold)
-    print(s4pDict['AD001']['L01'])
+    # print(s4pDict['AD001']['L01'])
 
     for dev, layerDict in s4pDict.items():
         for layer, db in layerDict.items():
