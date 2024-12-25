@@ -7,6 +7,7 @@ import json
 import math
 import xlsxwriter
 import importlib
+import re
 from xlsxwriter.utility import xl_rowcol_to_cell
 from xlsxwriter.utility import xl_range
 
@@ -86,8 +87,49 @@ def read_trace_report_table(filePath, db_common):
     return
 
 def read_impedance_report_table(filePath, db_common):
-    read_common(filePath, db_common)
-    return
+    tmpDuct = {}
+    read_common(filePath, tmpDuct)
+
+    #"Z of Trace 1"
+    pattern = r"Z of (Trace .+) "
+    impedance_duct = {}
+    for key, val in tmpDuct.items():
+        match = re.match(pattern, key) 
+        if match:
+            trace = match.group(1)
+            #print(f'trace:{trace}, val:{val}')
+            impedance_duct[trace] = float(val)    
+        pass
+    return impedance_duct
+
+def get_uncertainty_duct(csv_reader):
+    #"Uncertainty @12.89GHz 3.083% - Frequency (GHz)"
+    pattern = r"Uncertainty @(.+)GHz (.+)% - Frequency \(GHz\)" 
+
+    uncertainty_duct = {}
+    tmpRow = next(iter(csv_reader))
+    for key in tmpRow.keys():
+        #print(key)
+        match = re.match(pattern, key) 
+        if match: 
+            frequency = match.group(1)
+            uncertainty = match.group(2) 
+            print(f"Frequency: {frequency:10}GHZ, Uncertainty: {uncertainty:10}%")
+            uncertainty_duct[float(frequency)] = float(uncertainty)
+        # else: 
+        #     print("No match found.")
+    
+    for configSamplingFreq in g_sampleFreqList:
+        if configSamplingFreq not in uncertainty_duct:
+            print(f'[ERROR] uncertainty sanity check error!!, confg freq not found: {configSamplingFreq}', )
+
+            len_duct = len(uncertainty_duct)
+            print(f'===== DBGINFO =====, uncertainty_duct.size:{len_duct}')
+            for freq, parcent in uncertainty_duct.items():
+                print(f'[DBGINFO] uncertainty_duct[{freq}]: {parcent}')
+            sys.exit(-1)
+    
+    return uncertainty_duct
 
 def read_uncertainty_plotl1l2(filePath, db):
     key_list = ['Frequency (GHz)',
@@ -96,14 +138,19 @@ def read_uncertainty_plotl1l2(filePath, db):
     freq_list = []
     fitted_list = []
     iLoss_list = []
+    uncertainty_duct = {}
 
     with open(filePath, newline='') as csvFile:
         csv_reader = csv.DictReader(csvFile, delimiter=',')
+        uncertainty_duct = get_uncertainty_duct(csv_reader)
+
         for row in csv_reader:
             freq_list.append(float(row['Frequency (GHz)']))
             fitted_list.append(float(row['Fitted']))
             iLoss_list.append(float(row['Insertion Loss']))
-    return freq_list, fitted_list, iLoss_list
+            
+        
+    return freq_list, fitted_list, iLoss_list, uncertainty_duct
 
 def genWorkBook(collectResFold):
     print("[INFO][SummaryReport] start {0}> ".format('='*30))
@@ -349,16 +396,19 @@ def make_database(workbook,dataSheet,dut,dutDict):
         db_uPlot = {}
 
         #read_freq_report_table(csv1, db_l1l2)
-        #read_impedance_report_table(csv2, db_common)
+        impedance_duct = read_impedance_report_table(csv2, db_common)
         #read_trace_report_table(csv3, db_common)
-        freq_list, fitted_list, insertLoss_list = read_uncertainty_plotl1l2(csv4, db_uPlot)
+        freq_list, fitted_list, insertLoss_list, uncertainty_duct = read_uncertainty_plotl1l2(csv4, db_uPlot)
 
+        print(impedance_duct)
         #print(freq_list)
         #dutDict['name'] = dut
         reverseFlag = -1 if g_configDict['fittedReverse'] else 1
         layerDict['freqList'] = freq_list
         layerDict['fittedList'] = [float(i)*reverseFlag for i in fitted_list]
         layerDict['iLossList'] = [float(i) for i in insertLoss_list]
+        layerDict['uncertaintyDuct'] = uncertainty_duct
+        layerDict['impedance'] = impedance_duct
     print("[INFO][make_database] done!!, {dut}".format(dut=dut))
     return
 
@@ -383,6 +433,8 @@ def run_summary_sheet(workbook, summarySheet, s4pDict):
         'font':'calibri'
     })
 
+    ########################
+    # Summary - header
     summarySheet.set_column(0, 0, 1)
     summarySheet.merge_range('B1:F1', 'Impedance design:  Line width/ Line space')
     summarySheet.merge_range('B2:C2', 'Ohm', getDefaultFormat(workbook,'#bedcf2'))
@@ -395,65 +447,176 @@ def run_summary_sheet(workbook, summarySheet, s4pDict):
         summarySheet.write(offset_row, offset_col+idx, layer,getDefaultFormat(workbook,'#bedcf2'))
         summarySheet.write(offset_row+1, offset_col + idx, '',format_default)
         idx += 1
-
-    #Summary
+    
+    ########################
+    # Summary - Summary 
     offset_row_summary = 4
     offset_col_summary = 1
 
     summarySheet.write(offset_row_summary, offset_col_summary, 'Summary', format_bold)
     summarySheet.merge_range(offset_row_summary + 1, offset_col_summary,
-                       offset_row_summary + 2, offset_col_summary+1,
+                       offset_row_summary + 3, offset_col_summary+1,
                        'Panel', getDefaultFormat(workbook,'#bedcf2'))
 
+
+    layerSize = len(g_layer_list)
+    lengthSize = len(g_length_list)
+    numOfDataPerLayer = 3 #(measured, Fitted, Uncertainty)/Per layer
+    table0Size = layerSize * lengthSize
+
+    ###########################
+    # Summary - Table0 - field
+    print(f'===== Generate Table 0 start =====>>>')
+    offset_row_table0 = offset_row_summary +1
+    offset_col_table0 = offset_col_summary +2
+
+    summarySheet.merge_range(offset_row_table0, offset_col_table0, 
+                             offset_row_table0, offset_col_table0 + table0Size -1,
+                             "impedance", getDefaultFormat(workbook, '#FF69B4'))
+    for layerIdx, layerStr in enumerate(g_layer_list):
+        offset_row = offset_row_table0
+        offset_col = offset_col_table0 + layerIdx * lengthSize
+
+        summarySheet.merge_range(offset_row+2, offset_col, 
+                                 offset_row+2, offset_col + 1,
+                                 layerStr, getDefaultFormat(workbook, '#c3e4bc'))
+
+        for lengIdx, lengthStr in enumerate(g_length_list):
+            summarySheet.write(offset_row+1, offset_col + lengIdx,
+                               f'{lengthStr} inch', getDefaultFormat(workbook, '#c3e4bc'))
+            pass
+        pass
+
+    ###########################
+    # Summary - Table0 - body
+    dutIdx = 0
+    for dut, ductDict in s4pDict.items():
+        for layerIdx, layerStr in enumerate(g_layer_list):
+            offset_row = offset_row_table0 + 3 + dutIdx
+            offset_col = offset_col_table0 + layerIdx * lengthSize
+
+            layerDict = ductDict[layerStr]
+            impedance_duct = layerDict['impedance']
+            #print(impedance_duct)
+            traceIdx = 0
+            for trace, val in impedance_duct.items():
+                summarySheet.write(offset_row, offset_col + traceIdx,
+                               val, getDefaultFormat(workbook, '#FFB6C1'))
+                traceIdx += 1
+                pass
+                    
+            pass
+        
+        dutIdx += 1
+        pass
+
+    def run_statistic_table0(offset_row_input, offset_col_input, attr, offset_row_summary, numOfDut):
+        summarySheet.write(offset_row_input, offset_col_summary+1, attr, getDefaultFormat(workbook,'#bedcf2'))
+        summarySheet.write(offset_row_input, offset_col_summary, '', getDefaultFormat(workbook,'#E77D40'))
+
+        for idx in range(numOfDataPerLayer):    
+            for layerIdx, layerStr in enumerate(g_layer_list):
+                for traceIdx in range(lengthSize):
+                    offset_row = offset_row_input
+                    offset_col = offset_col_input + layerIdx * lengthSize + traceIdx
+
+                    if attr == 'Range':
+                        max_cell = xl_rowcol_to_cell(offset_row-2, offset_col)
+                        min_cell = xl_rowcol_to_cell(offset_row-1, offset_col)
+
+                        val = "=({max_cell} - {min_cell})".format(
+                            max_cell=max_cell, min_cell=min_cell)
+                        summarySheet.write(offset_row, offset_col,
+                                        val, getDefaultFormat(workbook, '#FFB6C1'))
+
+                    else:
+                        offset_dut_start = offset_row_summary + 4
+                        offset_dut_end = offset_dut_start + (numOfDut - 1)
+                        dutRange = xl_range(offset_dut_start, offset_col,
+                                            offset_dut_end, offset_col)
+                        val = "={func}({range})".format(func=attr, range=dutRange)
+
+                        colorHex = '#e8f426' if attr =='Average' else '#FFB6C1'
+                        summarySheet.write(offset_row, offset_col,
+                                        val, getDefaultFormat(workbook, colorHex))
+                    pass
+                pass
+            pass
+
+    numOfDut = len(s4pDict)
+    offset_row_statistic = offset_row_summary + 4 + numOfDut
+    offset_col_statistic = offset_col_summary + 2
+    run_statistic_table0(offset_row_statistic+0, offset_col_statistic, 'Average', offset_row_summary, numOfDut)
+    run_statistic_table0(offset_row_statistic+1, offset_col_statistic, 'Max'    , offset_row_summary, numOfDut)
+    run_statistic_table0(offset_row_statistic+2, offset_col_statistic, 'Min'    , offset_row_summary, numOfDut)
+    run_statistic_table0(offset_row_statistic+3, offset_col_statistic, 'Range'  , offset_row_summary, numOfDut)
+
+    print(f'===== Generate Table 0 done <<<=====')
+
+    ########################
+    # Summary - Table1
+    print('\n')
+    print(f'===== Generate Table 1 start =====>>>')
     offset_row_summary_sample = offset_row_summary + 1
     offset_col_summary_sample = offset_col_summary + 2
-    layerSize = len(g_layer_list)
+    offset_col_summary_sample += table0Size
     sampleIdx = 0
-
     for sampleFreq in g_sampleFreqList:
         sampleStr = "(dB/in,@{0}GHz)".format(sampleFreq)
         lengOfSampleStr = len(sampleStr)
-        offset_col = offset_col_summary_sample + (sampleIdx * layerSize)
-        if layerSize > 1:
+        offset_col = offset_col_summary_sample + (sampleIdx * (layerSize * numOfDataPerLayer))
+        
+        if layerSize >= 1:
             summarySheet.merge_range(offset_row_summary_sample, offset_col,
-                                     offset_row_summary_sample, offset_col + (layerSize-1),
+                                     offset_row_summary_sample, offset_col + (layerSize * numOfDataPerLayer -1),
                                      sampleStr, getDefaultFormat(workbook, '#c3e4bc'))
-            summarySheet.set_column(offset_col,offset_col + (layerSize-1),lengOfSampleStr)
+            summarySheet.set_column(offset_col,offset_col + (layerSize *numOfDataPerLayer-1), lengOfSampleStr)
         else:
             summarySheet.write(offset_row_summary_sample, offset_col,
                                sampleStr, getDefaultFormat(workbook, '#c3e4bc'))
             summarySheet.set_column(offset_col,offset_col,lengOfSampleStr)
 
+
         for layerIdx in range(layerSize):
-            offset_row = offset_row_summary_sample + 1
-            offset_col = offset_col_summary_sample + (sampleIdx * layerSize)
-            summarySheet.write(offset_row, offset_col + layerIdx,
+            col_field = offset_col+ layerIdx*numOfDataPerLayer
+            summarySheet.write(offset_row_summary_sample +1, col_field +0, 'measured'      , getDefaultFormat(workbook, '#c3e4bc'))
+            summarySheet.write(offset_row_summary_sample +1, col_field +1, 'Fitted'        , getDefaultFormat(workbook, '#c3e4bc'))
+            summarySheet.write(offset_row_summary_sample +1, col_field +2, 'Uncertainty(%)', getDefaultFormat(workbook, '#c3e4bc'))
+
+            offset_row = offset_row_summary_sample + 2
+            offset_col = offset_col_summary_sample + (sampleIdx * layerSize * numOfDataPerLayer)
+            summarySheet.merge_range(offset_row, offset_col + layerIdx * numOfDataPerLayer,
+                                     offset_row, offset_col + layerIdx * numOfDataPerLayer + (numOfDataPerLayer - 1),
                                g_layer_list[layerIdx], getDefaultFormat(workbook, '#c3e4bc'))
 
         sampleIdx += 1
 
-    offset_row_data = offset_row_summary + 3
-    offset_col_data = offset_col_summary + 1
+    offset_row_data = offset_row_summary + 4
+    offset_col_data = offset_col_summary_sample
     dutIdx = 0
 
     for dut, ductDict in s4pDict.items():
         offset_row = offset_row_data + dutIdx
         offset_col = offset_col_data
-        summarySheet.write(offset_row, offset_col,
-                           dut, getDefaultFormat(workbook,'#bedcf2'))
+        
+        summarySheet.write(offset_row, offset_col_summary, '', getDefaultFormat(workbook,'#E77D40'))
+        summarySheet.write(offset_row, offset_col_summary+1, dut, getDefaultFormat(workbook,'#bedcf2'))
         for sampleIdx in range(len(g_sampleFreqList)):
             sampleFreq = g_sampleFreqList[sampleIdx]
             for layerIdx in range(layerSize):
                 layerDict = ductDict[g_layer_list[layerIdx]]
                 freq_list = layerDict['freqList']
                 iLoss_list = layerDict['iLossList']
+                fitted_list = layerDict['fittedList']
+                uncertainty_duct = layerDict['uncertaintyDuct']
 
                 # Interpolate
                 prevIdx, nextIdx = binarySearchPrevNext(sampleFreq, freq_list)
                 deltaFreq = (freq_list[nextIdx] - freq_list[prevIdx])
                 deltaSampleFreq = (sampleFreq - freq_list[prevIdx])
                 ratio = deltaSampleFreq / deltaFreq
-                valAfterInterpoplate = iLoss_list[prevIdx] + (ratio * (iLoss_list[nextIdx] - iLoss_list[prevIdx]))
+                valAfterInterpoplate_iLoss  = iLoss_list[prevIdx]  + (ratio * (iLoss_list[nextIdx]  - iLoss_list[prevIdx]))
+                valAfterInterpoplate_fitted = fitted_list[prevIdx] + (ratio * (fitted_list[nextIdx] - fitted_list[prevIdx]))
                 '''
                 print("freq:{0},{1}, iLoss:{2},{3}, sample:{4}, ratio:{5}, deltaFreq:{6}".format(
                     freq_list[prevIdx], freq_list[nextIdx],
@@ -461,50 +624,67 @@ def run_summary_sheet(workbook, summarySheet, s4pDict):
                     sampleFreq, ratio, deltaFreq))
                 '''
 
-                offset_col = offset_col_data + 1 + (layerSize * sampleIdx)
-                summarySheet.write(offset_row, offset_col + layerIdx,
-                                   valAfterInterpoplate , getDefaultFormat(workbook, '#fbf5dc'))
+                offset_col = offset_col_data + (sampleIdx * layerSize * numOfDataPerLayer)
+                offset_col_data_measured    = offset_col + layerIdx * numOfDataPerLayer + 0
+                offset_col_data_fitted      = offset_col + layerIdx * numOfDataPerLayer + 1
+                offset_col_data_uncertainty = offset_col + layerIdx * numOfDataPerLayer + 2
+
+                summarySheet.write(offset_row, offset_col_data_measured,
+                                   valAfterInterpoplate_iLoss , getDefaultFormat(workbook, '#fbf5dc'))
+                
+                summarySheet.write(offset_row, offset_col_data_fitted,
+                                   valAfterInterpoplate_fitted , getDefaultFormat(workbook, '#fbf5dc'))
+                
+                summarySheet.write(offset_row, offset_col_data_uncertainty,
+                                   uncertainty_duct[sampleFreq] , getDefaultFormat(workbook, '#fbf5dc'))
 
         dutIdx += 1
 
     #statistic
+    #numOfDataPerLayer = 3 #(measured, Fitted, Uncertainty)/Per layer
     def run_statistic(offset_row_input, offset_col_input, attr, offset_row_summary, numOfDut):
-        summarySheet.write(offset_row_input, offset_col_input,attr, getDefaultFormat(workbook,'#bedcf2'))
-        offset_col_input += 1
+        #summarySheet.write(offset_row_input, offset_col_summary+1, attr, getDefaultFormat(workbook,'#bedcf2'))
 
-        for sampleIdx in range(len(g_sampleFreqList)):
-            for layerIdx in range(layerSize):
-                offset_row = offset_row_input
-                offset_col = offset_col_input + (sampleIdx * layerSize) + layerIdx
+        for idx in range(numOfDataPerLayer):
+            #offset_col_input = offset_col_input + idx
+                
+            for sampleIdx in range(len(g_sampleFreqList)):
+                for layerIdx in range(layerSize):
+                    offset_row = offset_row_input
+                    offset_col = offset_col_input + (sampleIdx * layerSize*numOfDataPerLayer) + layerIdx*numOfDataPerLayer +idx
 
-                if attr == 'Range':
-                    max_cell = xl_rowcol_to_cell(offset_row-2, offset_col)
-                    min_cell = xl_rowcol_to_cell(offset_row-1, offset_col)
+                    if attr == 'Range':
+                        max_cell = xl_rowcol_to_cell(offset_row-2, offset_col)
+                        min_cell = xl_rowcol_to_cell(offset_row-1, offset_col)
 
-                    val = "=({max_cell} - {min_cell})".format(
-                        max_cell=max_cell, min_cell=min_cell)
-                    summarySheet.write(offset_row, offset_col,
-                                    val, getDefaultFormat(workbook, '#fbf5dc'))
+                        val = "=({max_cell} - {min_cell})".format(
+                            max_cell=max_cell, min_cell=min_cell)
+                        summarySheet.write(offset_row, offset_col,
+                                        val, getDefaultFormat(workbook, '#fbf5dc'))
 
-                else:
-                    offset_dut_start = offset_row_summary + 3
-                    offset_dut_end = offset_dut_start + (numOfDut - 1)
-                    dutRange = xl_range(offset_dut_start, offset_col,
-                                        offset_dut_end, offset_col)
-                    val = "={func}({range})".format(func=attr, range=dutRange)
+                    else:
+                        offset_dut_start = offset_row_summary + 4
+                        offset_dut_end = offset_dut_start + (numOfDut - 1)
+                        dutRange = xl_range(offset_dut_start, offset_col,
+                                            offset_dut_end, offset_col)
+                        val = "={func}({range})".format(func=attr, range=dutRange)
 
-                    colorHex = '#e8f426' if attr =='Average' else '#fbf5dc'
-                    summarySheet.write(offset_row, offset_col,
-                                    val, getDefaultFormat(workbook, colorHex))
+                        colorHex = '#e8f426' if attr =='Average' else '#fbf5dc'
+                        summarySheet.write(offset_row, offset_col,
+                                        val, getDefaultFormat(workbook, colorHex))
+                    pass
+                pass
+            pass
 
     numOfDut = len(s4pDict)
-    offset_row_statistic = offset_row_summary + 3 + numOfDut
-    offset_col_statistic = offset_col_summary + 1
+    offset_row_statistic = offset_row_summary + 4 + numOfDut
+    offset_col_statistic = offset_col_summary_sample
     run_statistic(offset_row_statistic+0, offset_col_statistic, 'Average', offset_row_summary, numOfDut)
-    run_statistic(offset_row_statistic+1, offset_col_statistic, 'Max', offset_row_summary, numOfDut)
-    run_statistic(offset_row_statistic+2, offset_col_statistic, 'Min', offset_row_summary, numOfDut)
-    run_statistic(offset_row_statistic+3, offset_col_statistic, 'Range', offset_row_summary, numOfDut)
+    run_statistic(offset_row_statistic+1, offset_col_statistic, 'Max'    , offset_row_summary, numOfDut)
+    run_statistic(offset_row_statistic+2, offset_col_statistic, 'Min'    , offset_row_summary, numOfDut)
+    run_statistic(offset_row_statistic+3, offset_col_statistic, 'Range'  , offset_row_summary, numOfDut)
 
+    print(f'===== Generate Table 1 done <<<=====')
     return
 
 def run_data_sheet(workbook, dataSheet, s4pDict):
@@ -751,11 +931,12 @@ if __name__ == '__main__':
     #[Step0] preprocess
     print("Current Working Directory:{0} ", os.getcwd())
     dataFold = os.getcwd()
+    
     collectResFold = os.path.join(dataFold, 'output')
-    if os.path.exists(collectResFold):
-        shutil.rmtree(collectResFold)
+    # if os.path.exists(collectResFold):
+    #     shutil.rmtree(collectResFold)
 
-    os.system(f'mkdir {collectResFold}')
+    # os.system(f'mkdir {collectResFold}')
     s4pDict = readConfig(dataFold, collectResFold)
     # print(s4pDict['AD001']['L01'])
 
@@ -768,13 +949,13 @@ if __name__ == '__main__':
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
 
 
-    os.chdir(g_configDict['aittFold'])
-    for dut in g_dut_list:
-        for layer in g_layer_list:
-            #print(s4pDict[dut][layer]['aittCmd'])
-            os.system(s4pDict[dut][layer]['aittCmd'])
-            print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
-    os.chdir(dataFold)
+    # os.chdir(g_configDict['aittFold'])
+    # for dut in g_dut_list:
+    #     for layer in g_layer_list:
+    #         print(s4pDict[dut][layer]['aittCmd'])
+    #         os.system(s4pDict[dut][layer]['aittCmd'])
+    #         print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
+    # os.chdir(dataFold)
 
     #sys.exit(0)
 
