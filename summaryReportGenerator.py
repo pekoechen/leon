@@ -34,8 +34,9 @@ g_configDict = {'deviceName':'Not assigned',
 g_dut_list = []
 g_layer_list = []
 g_length_list = []
+g_sampleFreqList = []
 #g_sampleFreqList = [1, 3, 4, 6, 8, 10 ,12.89, 16, 20, 25, 40]
-g_sampleFreqList = [4, 8, 12.89, 16, 28]
+#g_sampleFreqList = [4, 8, 12.89, 16, 28]
 
 ###################
 # utility
@@ -168,7 +169,7 @@ def readConfig(dataFold, collectResFold):
             row_list = f.read().splitlines()
             return row_list
 
-    global g_dut_list, g_layer_list, g_length_list
+    global g_dut_list, g_layer_list, g_length_list, g_sampleFreqList
     # g_dut_list = csv_read('dut.csv')
     # g_layer_list = csv_read('layer.csv')
     # g_length_list = csv_read('length.csv')
@@ -197,6 +198,7 @@ def readConfig(dataFold, collectResFold):
     g_dut_list    = jdb['dut']
     g_layer_list  = jdb['layer']
     g_length_list = jdb['length']
+    g_sampleFreqList = jdb['sampleFreq']
 
     s4pDict = {}
     for dut in g_dut_list:
@@ -690,7 +692,7 @@ def run_summary_sheet(workbook, summarySheet, s4pDict):
 def run_data_sheet(workbook, dataSheet, s4pDict):
     print("[INFO][SummaryReport] running DataSheet")
 
-    global g_dut_list, g_layer_list, g_length_list
+    global g_dut_list, g_layer_list, g_length_list, g_sampleFreqList
     tmpDut = next(iter(s4pDict.values()))
     tmpLayer = next(iter(tmpDut.values()))
 
@@ -933,8 +935,8 @@ if __name__ == '__main__':
     dataFold = os.getcwd()
     
     collectResFold = os.path.join(dataFold, 'output')
-    # if os.path.exists(collectResFold):
-    #     shutil.rmtree(collectResFold)
+    if os.path.exists(collectResFold):
+        shutil.rmtree(collectResFold)
 
     # os.system(f'mkdir {collectResFold}')
     s4pDict = readConfig(dataFold, collectResFold)
@@ -949,13 +951,13 @@ if __name__ == '__main__':
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
 
 
-    # os.chdir(g_configDict['aittFold'])
-    # for dut in g_dut_list:
-    #     for layer in g_layer_list:
-    #         print(s4pDict[dut][layer]['aittCmd'])
-    #         os.system(s4pDict[dut][layer]['aittCmd'])
-    #         print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
-    # os.chdir(dataFold)
+    os.chdir(g_configDict['aittFold'])
+    for dut in g_dut_list:
+        for layer in g_layer_list:
+            print(s4pDict[dut][layer]['aittCmd'])
+            os.system(s4pDict[dut][layer]['aittCmd'])
+            print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
+    os.chdir(dataFold)
 
     #sys.exit(0)
 
