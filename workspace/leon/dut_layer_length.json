@@ -1,0 +1,38 @@
+{
+    "config": {
+        "deviceName": "Unimicron EM888",
+        "aittFold": "C:\\Program Files\\Advanced Interconnect Test Tool (64-Bit)",
+        "freq": [
+            0.81,
+            1.35,
+            2.7,
+            3,
+            4,
+            5,
+            6,
+            8,
+            10,
+            12.8,
+            16,
+            20
+        ]
+    },
+    "dut": [
+        "1"
+    ],
+    "layer": [
+        "L3",
+	    "L4"
+   ],
+    "length": [
+        "4",
+        "8"
+    ],
+    "sampleFreq": [
+        4,
+        8,
+        12.89,
+        16,
+        28
+    ]    
+}
