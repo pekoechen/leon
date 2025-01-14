@@ -939,8 +939,8 @@ if __name__ == '__main__':
     dataFold = os.getcwd()
     
     collectResFold = os.path.join(dataFold, 'output')
-    # if os.path.exists(collectResFold):
-    #     shutil.rmtree(collectResFold)
+    if os.path.exists(collectResFold):
+        shutil.rmtree(collectResFold)
 
     # os.system(f'mkdir {collectResFold}')
     s4pDict = readConfig(dataFold, collectResFold)
@@ -955,13 +955,13 @@ if __name__ == '__main__':
     #path = os.path.join('C:', os.sep, 'meshes', 'as')
 
 
-    # os.chdir(g_configDict['aittFold'])
-    # for dut in g_dut_list:
-    #     for layer in g_layer_list:
-    #         print(s4pDict[dut][layer]['aittCmd'])
-    #         os.system(s4pDict[dut][layer]['aittCmd'])
-    #         print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
-    # os.chdir(dataFold)
+    os.chdir(g_configDict['aittFold'])
+    for dut in g_dut_list:
+        for layer in g_layer_list:
+            print(s4pDict[dut][layer]['aittCmd'])
+            os.system(s4pDict[dut][layer]['aittCmd'])
+            print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
+    os.chdir(dataFold)
 
     #sys.exit(0)
 
