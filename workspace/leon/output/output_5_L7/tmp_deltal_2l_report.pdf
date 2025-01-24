@@ -62,7 +62,7 @@ BT
 ET
 BT
 1 0 0 1 50 750 Tm
-(C\072\134leon4\1370\134workspace\134leon\134output\134output\1373\137L7) Tj
+(C\072\134leon4\1370\134workspace\134leon\134output\134output\1375\137L7) Tj
 T*
 ET
 Q
@@ -3530,7 +3530,7 @@ endobj
 10 0 obj
 <<
 /Type /FontDescriptor
-/FontName /QVAAAA+TimesNewRomanBold
+/FontName /QPAAAA+TimesNewRomanBold
 /Flags 4
 /FontBBox [ -503.90625 -295.898437 1805.66406 953.125 ]
 /ItalicAngle 0
@@ -3655,7 +3655,7 @@ endobj
 16 0 obj
 <<
 /Type /FontDescriptor
-/FontName /QPAAAA+TimesNewRomanRegular
+/FontName /QVAAAA+TimesNewRomanRegular
 /Flags 4
 /FontBBox [ -513.183593 -276.855468 1847.16796 938.476562 ]
 /ItalicAngle 0
