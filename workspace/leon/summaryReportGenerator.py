@@ -8,6 +8,7 @@ import math
 import xlsxwriter
 import importlib
 import re
+
 from xlsxwriter.utility import xl_rowcol_to_cell
 from xlsxwriter.utility import xl_range
 
@@ -28,7 +29,7 @@ g_cellFreqListStart = None
 g_cellFreqListEnd = None
 
 g_configDict = {'deviceName':'Not assigned',
-                'aittFold':'C:\Program Files\Advanced Interconnect Test Tool (64-Bit)',
+                'aittFold':'C:\\Program Files\\Advanced Interconnect Test Tool (64-Bit)',
                 'fittedReverse': 'false'}
 
 g_dut_list = []
@@ -169,7 +170,7 @@ def readConfig(dataFold, collectResFold):
             row_list = f.read().splitlines()
             return row_list
 
-    global g_dut_list, g_layer_list, g_length_list, g_sampleFreqList
+    global g_configDict, g_dut_list, g_layer_list, g_length_list, g_sampleFreqList
     # g_dut_list = csv_read('dut.csv')
     # g_layer_list = csv_read('layer.csv')
     # g_length_list = csv_read('length.csv')
@@ -177,8 +178,13 @@ def readConfig(dataFold, collectResFold):
 
     with open('dut_layer_length.json', 'r') as file:
         jdb = json.load(file)
+
+    print('#'*30)
+    print('# dump config list')
     for item in jdb.items():
         print("[INFO][config] {0} ".format(item))
+    print('#'*30)
+    print()
 
     # global g_configDict
     # for parameter in config_list:
@@ -200,14 +206,15 @@ def readConfig(dataFold, collectResFold):
     g_length_list = jdb['length']
     g_sampleFreqList = jdb['sampleFreq']
 
+    format = g_configDict['format'] # format:{s2p, s4p}
     s4pDict = {}
     for dut in g_dut_list:
         s4pDict[dut] = {}
         #s4pDict[dut]['name'] = dut
         for layer in g_layer_list:
             for length in g_length_list:
-                fileName = "{0}-{1}-{2}.s4p".format(dut,layer,length)
-                filePath = os.path.join(dataFold, 'input_s4p', fileName)
+                fileName = f'{dut}-{layer}-{length}.{format}'
+                filePath = os.path.join(dataFold, f'input_{format}', fileName)
                 if not os.path.isfile(filePath):
                     print("[ERROR] {0} doest not exist!!".format(filePath))
                     sys.exit(-1)
@@ -216,6 +223,19 @@ def readConfig(dataFold, collectResFold):
                 layerDict['outFold'] = os.path.join(collectResFold, "output_{0}_{1}".format(dut,layer))
         pass
 
+    ##############################
+    ##### dump input file list####
+    print('#'*30)
+    print('# dump input file list')
+    for dut, layerDict in s4pDict.items():
+        for layer, lengthDict in layerDict.items():
+            for length, inputFileName in lengthDict.items():
+                print(f'[INFO][input] dut:{dut}, layer:{layer}, leng:{length}, inputFile:{inputFileName}')
+    print('#'*30)
+    print()
+    #sys.exit(0)
+
+    #########################
     # for aitt.exe parameter
     numOfLength = len(g_length_list)
     if(numOfLength != 2) and (numOfLength != 3):
@@ -229,6 +249,13 @@ def readConfig(dataFold, collectResFold):
         os.path.join(aittFold, 'script_examples','deltal_{0}l_report.js'.format(numOfLength))
     filePath_script = "\"{0}\"".format(filePath_script)
 
+    ############################
+    ##### dump aitt command ####
+    isDump = False
+    if isDump:
+        print('#'*30)
+        print('# dump aitt command')    
+        pass
     for dut in g_dut_list:
         for layer in g_layer_list:
             aittCmd = 'aitt.exe -s {script}'.format(script=filePath_script)
@@ -239,9 +266,15 @@ def readConfig(dataFold, collectResFold):
                 opt = 'true'
                 length = int(length.split('IN')[0])
                 aittCmd += " {0} {1} {2}".format(filePath, opt, length)
-            #print (aittCmd)
             aittCmd = "{0} {1}".format(aittCmd, os.path.join(dataFold, layerDict['outFold']))
+            if isDump:
+                print (aittCmd)
+                print()
+                pass
             layerDict['aittCmd'] = aittCmd
+    if isDump:
+        print('#'*30)
+        print()
 
     return s4pDict
 
@@ -277,11 +310,11 @@ def binarySearchPrevNext(target, inList):
 ####################
 # [pre process] mag png
 def runFreqMagEach(filePath, length):
+    def dumpFreqMagInfo_s4p(attrDict):
     # ['!', 'FREQ.GHZ', 'S11RE', 'S11IM', 'S12RE', 'S12IM', 'S13RE', 'S13IM', 'S14RE', 'S14IM']
     # ['!', 'S21RE', 'S21IM', 'S22RE', 'S22IM', 'S23RE', 'S23IM', 'S24RE', 'S24IM']
     # ['!', 'S31RE', 'S31IM', 'S32RE', 'S32IM', 'S33RE', 'S33IM', 'S34RE', 'S34IM']
     # ['!', 'S41RE', 'S41IM', 'S42RE', 'S42IM', 'S43RE', 'S43IM', 'S44RE', 'S44IM']
-    def dumpFreqMagInfo(attrDict):
         print("<===== Freq Ghz[{0}] ========>".format(attrDict['FREQ.GHZ']))
         print("S31RE:{0}".format(attrDict['S31RE']))
         print("S31IM:{0}".format(attrDict['S31IM']))
@@ -294,14 +327,78 @@ def runFreqMagEach(filePath, length):
 
         print("S42RE:{0}".format(attrDict['S42RE']))
         print("S42IM:{0}".format(attrDict['S42IM']))
+        return
+
+    def dumpFreqMagInfo_s2p(attrDict):
+        print("<===== Freq Ghz[{0}] ========>".format(attrDict['FREQ.GHZ']))
+        print("S11RE:{0}".format(attrDict['S11RE']))
+        print("S11IM:{0}".format(attrDict['S11IM']))
+
+        print("S21RE:{0}".format(attrDict['S21RE']))
+        print("S21IM:{0}".format(attrDict['S21IM']))
+
+        print("S12RE:{0}".format(attrDict['S12RE']))
+        print("S12IM:{0}".format(attrDict['S12IM']))
+
+        print("S22RE:{0}".format(attrDict['S22RE']))
+        print("S22IM:{0}".format(attrDict['S22IM']))
+        return
+
+    def dumpFreqMagInfo(format, attrDict):
+        if format =='s2p':
+            dumpFreqMagInfo_s2p(attrDict)
+        elif format =='s4p':
+            dumpFreqMagInfo_s4p(attrDict)
+        return
+
+    def calculateMag(format, attrDict):
+        if format == 's2p':
+            reVal = (attrDict['S21RE'] )
+            imVal = (attrDict['S21IM'] )
+            tmpVal = math.sqrt(pow(reVal, 2) + pow(imVal, 2))
+            val = 20 * math.log(tmpVal, 10)
+            freq = attrDict['FREQ.GHZ']
+            return (val, freq)
+        elif format == 's4p':
+            reVal = (attrDict['S31RE'] - attrDict['S41RE'] - attrDict['S32RE'] + attrDict['S42RE'])/2
+            imVal = (attrDict['S31IM'] - attrDict['S41IM'] - attrDict['S32IM'] + attrDict['S42IM'])/2
+            tmpVal = math.sqrt(pow(reVal, 2) + pow(imVal, 2))
+            val = 20 * math.log(tmpVal, 10)
+            freq = attrDict['FREQ.GHZ']
+            return (val, freq)
+        else:
+            print(f'[ERROR] input wrong 2, format={format}')
+            sys.exit(-1)
+
+
+    ############################
+    # config offset, fields
+    def getOffsets(format):
+        s2p_offset = 10
+        s4p_offset = 13
+        s2p_rowUnit = 1
+        s4p_rowUnit = 4
+        rowIdxStart = 8
+        if format == 's2p':
+            return (s2p_offset, s2p_rowUnit, rowIdxStart, rowIdxStart + s2p_rowUnit)
+        elif format == 's4p':
+            return (s4p_offset, s4p_rowUnit, rowIdxStart, rowIdxStart + s4p_rowUnit)
+        else:
+            print(f'[ERROR] input wrong, format={format}')
+            sys.exit(-1)
+        return(-1, -1)
 
     #filePath = 'AD001_L01_05IN.s4p'
+    #print(f'runFreqMagEach(), filePath:{filePath}')
     with open(filePath, newline='', encoding="utf-8") as f:
         row_list = f.read().splitlines()
 
-        rowUnit = 4
-        rowIdxStart = 8
-        rowIdxEnd = rowIdxStart + rowUnit
+        global g_configDict
+        format = g_configDict['format'] # format:{s2p, s4p}
+        fielidOffset, rowUnit, rowIdxStart, rowIdxEnd = getOffsets(format)
+        #print(f'format:{format}, fielidOffset:{fielidOffset}, rowUnit:{rowUnit}')
+        #sys.exit(0)
+
         attrIdx = 0
         attrIdxMap = {}
         for rowIdx in range(rowIdxStart, rowIdxEnd):
@@ -310,8 +407,9 @@ def runFreqMagEach(filePath, length):
                 attrIdx += 1
 
         #print(attrIdxMap)
+        #sys.exit(0)
 
-        row_list = row_list[13:]
+        row_list = row_list[fielidOffset:]
         if (len(row_list)%rowUnit)!=0:
             print("[ERROR] input wrong, len(row_list)={0}".format(len(row_list)))
             sys.exit(-1)
@@ -331,14 +429,9 @@ def runFreqMagEach(filePath, length):
                     attrIdx += 1
                 #print(row_list[rowIdx])
                 pass
-            #dumpFreqMagInfo(attrDict)
-
-            reVal = (attrDict['S31RE'] - attrDict['S41RE'] - attrDict['S32RE'] + attrDict['S42RE'])/2
-            imVal = (attrDict['S31IM'] - attrDict['S41IM'] - attrDict['S32IM'] + attrDict['S42IM'])/2
-            tmpVal = math.sqrt(pow(reVal, 2) + pow(imVal, 2))
-            val = 20 * math.log(tmpVal, 10)
-            freq = attrDict['FREQ.GHZ']
-
+            #dumpFreqMagInfo(format, attrDict)
+            #pass
+            val, freq = calculateMag(format, attrDict)
             freqInfo[0].append(freq)
             freqInfo[1].append(val)
             pass
@@ -363,23 +456,24 @@ def runFreqMagEach(filePath, length):
     return
 
 def runFreqMag(s4pDict,dataFold):
+    #print(f'runFreqMag(), dataFold:{dataFold}')
     for dut in g_dut_list:
         for layer in g_layer_list:
             print("[INFO] parsing {0}_{1}".format(dut, layer))
             outFold = s4pDict[dut][layer]['outFold']
             outFilePath = os.path.join(outFold, 'magnitude.png')
-            print(outFilePath)
+            #print(f'outFilePath:{outFilePath}')
 
             plt.cla()
             for leng in g_length_list:
                 fileName = s4pDict[dut][layer][leng]
                 filePath = os.path.join(dataFold, fileName)
-                print(f'leng:{leng}, fileName:{fileName}, filePath:{filePath}')
+                #print(f'leng:{leng}, fileName:{fileName}, filePath:{filePath}')
                 runFreqMagEach(filePath,leng)
 
             plt.savefig(outFilePath, dpi=300, format="png")
 
-    print("[INFO][Magnitude] successfully generate")
+    print("[INFO][Magnitude] successfully generate\n")
     return
 def make_database(workbook,dataSheet,dut,dutDict):
     for layer, layerDict in dutDict.items():
@@ -405,6 +499,7 @@ def make_database(workbook,dataSheet,dut,dutDict):
         print(impedance_duct)
         #print(freq_list)
         #dutDict['name'] = dut
+        global g_configDict
         reverseFlag = -1 if g_configDict['fittedReverse'] else 1
         layerDict['freqList'] = freq_list
         layerDict['fittedList'] = [float(i)*reverseFlag for i in fitted_list]
@@ -958,10 +1053,11 @@ if __name__ == '__main__':
     os.chdir(g_configDict['aittFold'])
     for dut in g_dut_list:
         for layer in g_layer_list:
-            print(s4pDict[dut][layer]['aittCmd'])
+            #print(s4pDict[dut][layer]['aittCmd'])
             os.system(s4pDict[dut][layer]['aittCmd'])
             print("[INFO][aitt.exe]process done {dut}_{layer}".format(dut=dut, layer=layer))
     os.chdir(dataFold)
+    print()
 
     #sys.exit(0)
 
@@ -997,5 +1093,6 @@ if __name__ == '__main__':
     print("[INFO] All process done !!!")
     print("[INFO] All process done !!!")
     print("[INFO] All process done !!!")
+    os.system("PAUSE")
 
     sys.exit(0)
