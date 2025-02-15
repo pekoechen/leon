@@ -204,7 +204,7 @@ def readConfig(dataFold, collectResFold):
     g_dut_list    = jdb['dut']
     g_layer_list  = jdb['layer']
     g_length_list = jdb['length']
-    g_sampleFreqList = jdb['sampleFreq']
+    g_sampleFreqList = jdb['freq_points_ghz']
 
     format = g_configDict['format'] # format:{s2p, s4p}
     s4pDict = {}
