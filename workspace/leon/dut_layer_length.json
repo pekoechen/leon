@@ -3,19 +3,18 @@
         "deviceName": "Unimicron EM888",
         "aittFold": "C:\\Program Files\\Advanced Interconnect Test Tool (64-Bit)",
         "format": "s2p",
-        "fittedReverse":false
+        "fittedReverse":false,
+        "FREQ.GHZ_LINE_NUMBER":24,
+        "PortSelection_LINE_NUMBER":25
     },
     "dut": [
-        "3",
-        "5",
-        "9"
+        "1"
     ],
     "layer": [
-        "L7",
-        "L12"
-   ],
+        "L5"
+    ],
     "length": [
-        "5",
+        "4",
         "8"
     ],
     "freq_points_ghz": [

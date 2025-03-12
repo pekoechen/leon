@@ -373,16 +373,21 @@ def runFreqMagEach(filePath, length):
 
     ############################
     # config offset, fields
+    global g_configDict
+    format = g_configDict['format'] # format:{s2p, s4p}
     def getOffsets(format):
-        s2p_offset = 10
-        s4p_offset = 13
+        # s2p_offset = 10
+        # s4p_offset = 13
         s2p_rowUnit = 1
         s4p_rowUnit = 4
-        rowIdxStart = 8
+        #rowIdxStart = 8 #"FREQ.GHZ_LINE_NUMBER"
+        rowIdxStart = g_configDict['FREQ.GHZ_LINE_NUMBER'] - 1
+        PortSelection_LINE_NUMBER =  g_configDict['PortSelection_LINE_NUMBER']
+        #print(f'FREQ.GHZ_LINE_NUMBER: {rowIdxStart}')
         if format == 's2p':
-            return (s2p_offset, s2p_rowUnit, rowIdxStart, rowIdxStart + s2p_rowUnit)
+            return (PortSelection_LINE_NUMBER, s2p_rowUnit, rowIdxStart, rowIdxStart + s2p_rowUnit)
         elif format == 's4p':
-            return (s4p_offset, s4p_rowUnit, rowIdxStart, rowIdxStart + s4p_rowUnit)
+            return (PortSelection_LINE_NUMBER, s4p_rowUnit, rowIdxStart, rowIdxStart + s4p_rowUnit)
         else:
             print(f'[ERROR] input wrong, format={format}')
             sys.exit(-1)
@@ -393,8 +398,6 @@ def runFreqMagEach(filePath, length):
     with open(filePath, newline='', encoding="utf-8") as f:
         row_list = f.read().splitlines()
 
-        global g_configDict
-        format = g_configDict['format'] # format:{s2p, s4p}
         fielidOffset, rowUnit, rowIdxStart, rowIdxEnd = getOffsets(format)
         #print(f'format:{format}, fielidOffset:{fielidOffset}, rowUnit:{rowUnit}')
         #sys.exit(0)
@@ -423,6 +426,8 @@ def runFreqMagEach(filePath, length):
             attrDict = collections.OrderedDict() 
             #print("rowStart:{0}, rowEnd:{1}".format(rowIdxStart, rowIdxEnd))
             for rowIdx in range(rowIdxStart, rowIdxEnd):
+                row = row_list[rowIdx];
+                #print(f'{row}')
                 for attr in row_list[rowIdx].split():
                     attrName = attrIdxMap[attrIdx]
                     attrDict[attrName] = float(attr)
